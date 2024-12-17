@@ -22,6 +22,7 @@ at_sem_flag_t at_sem_flag;
 uint16_t send_data_len;
 uint8_t send_data[RX_BUFFER_SIZE] = { 0 };
 bool uart_running = false;
+uint8_t default_service_uuid[16] = {BT_UUID_CUSTOM_SERVICE_VAL_ARG};
 
 void sys_reboot(int type)
 {
@@ -164,8 +165,8 @@ void proj_uart_at_handle(uint8_t *data, uint16_t pack_size)
 
 	// struct uart_config uart_cfg_check;
 
-	if (!strncmp((const char *)buff, "AT+BAUD+", sizeof("AT+BAUD+") - 1)) {
-		string_to_num(&buff[sizeof("AT+BAUD+") - 1], &num, (pack_size - (sizeof("AT+BAUD+") - 1)));
+	if (!strncmp((const char *)buff, "AT:BPS-", sizeof("AT:BPS-") - 1)) {
+		string_to_num(&buff[sizeof("AT:BPS-") - 1], &num, (pack_size - (sizeof("AT:BPS-") - 1)));
 		// uart_config_get(uart_dev, &uart_cfg_check);
 		if (num <= 115200) {
 			if (num == g_fmc_config_data.baudrate) {
@@ -176,36 +177,54 @@ void proj_uart_at_handle(uint8_t *data, uint16_t pack_size)
 				SYS_delay_10nop(1000);
 				FMC_WriteStream(FLCTL, DEFAULT_CONFIG_DATA_ADD, (unsigned char *)&g_fmc_config_data, sizeof(g_fmc_config_data));
 				SYS_delay_10nop(1000);
-				TGT_SendMultiData("OK+BAUD\r\n", sizeof("OK+BAUD\r\n") - 1);
+				TGT_SendMultiData("AT:OK\r\n", sizeof("AT:OK\r\n") - 1);
 				reset_flag = true;
 			}
 		} else {
 			TGT_SendMultiData("OVER 115200 REJECT\r\n", sizeof("OVER 115200 REJECT\r\n") - 1);
 		}
 
-	} else if (!strncmp((const char *)buff, "AT+BAUD?", sizeof("AT+BAUD?") - 1)) {
+		} else if (!strncmp((const char *)buff, "AT:BPS?", sizeof("AT:BPS?") - 1)) {
 		// uart_config_get(uart_dev, &uart_cfg_check);
 		length = num_to_srting(g_fmc_config_data.baudrate, num_buff);
 		num_buff[length] = '\n';
-		TGT_SendMultiData("BAUD+", sizeof("BAUD+") - 1);
+			TGT_SendMultiData("AT:BPS-", sizeof("AT:BPS-") - 1);
 		TGT_SendMultiData(num_buff, length + 1);
-	} else if (!strncmp((const char *)buff, "AT+PIN+", sizeof("AT+PIN+") - 1)) {
+			} else if (!strncmp((const char *)buff, "AT:PID-", sizeof("AT:PID-") - 1)) {
 		uint32_t passkey_at;
 
-		string_to_num(&buff[sizeof("AT+PIN+") - 1], &passkey_at, (pack_size - (sizeof("AT+PIN+") - 1)));
+		string_to_num(&buff[sizeof("AT:PID-") - 1], &passkey_at, (pack_size - (sizeof("AT:PID-") - 1)));
 		printf("passkey input %d\n", passkey_at);
 		g_fmc_config_data.passkey = passkey_at;
 		/* bt_passkey_set(g_fmc_config_data.passkey); */
-		TGT_SendMultiData("OK+PIN\n", sizeof("OK+PIN\n") - 1);
-	} else if (!strncmp((const char *)buff, "AT+PIN?", sizeof("AT+PIN+") - 1)) {
+				TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+				} else if (!strncmp((const char *)buff, "AT:PID?", sizeof("AT:PID?") - 1)) {
 		length = num_to_srting(g_fmc_config_data.passkey, num_buff);
 		num_buff[length] = '\n';
-		TGT_SendMultiData("PIN+", sizeof("PIN+") - 1);
+		TGT_SendMultiData("AT:PID-", sizeof("AT:PID-") - 1);
 		TGT_SendMultiData(num_buff, length + 1);
-	} else if (!strncmp((const char *)buff, "AT+RESET", sizeof("AT+RESET") - 1)) {
-		TGT_SendMultiData("OK+RESET\n", sizeof("OK+RESET\n") - 1);
+					} else if (!strncmp((const char *)buff, "AT:RST", sizeof("AT:RST") - 1)) {
+						TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
 		reset_flag = true;
-	} else if (!strncmp((const char *)buff, "AT+BONDMAC+", sizeof("AT+BONDMAC+") - 1)) {
+	} else if(!strncmp((const char *)buff, "AT:ADVAL-", sizeof("AT:ADVAL-") - 1)){
+		/*enable*/
+		uint32_t enable;
+		string_to_num(&buff[sizeof("AT:ADVAL-") - 1], &enable, (pack_size - (sizeof("AT:ADVAL-") - 1)));
+		g_fmc_config_data.advalenable = enable;
+		FMC_EraseSector(FLCTL, DEFAULT_CONFIG_DATA_ADD);
+		SYS_delay_10nop(1000);
+		FMC_WriteStream(FLCTL, DEFAULT_CONFIG_DATA_ADD, (unsigned char *)&g_fmc_config_data, sizeof(g_fmc_config_data));
+		SYS_delay_10nop(1000);
+		TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+//		reset_flag = true;
+		
+					}else if (!strncmp((const char *)buff, "AT:ADVAL?", sizeof("AT:ADVAL?") - 1)) {
+		length = num_to_srting(g_fmc_config_data.advalenable, num_buff);
+		num_buff[length] = '\n';
+		TGT_SendMultiData("AT:ADVAL-", sizeof("AT:ADVAL-") - 1);
+		TGT_SendMultiData(num_buff, length + 1);
+						
+					}else if (!strncmp((const char *)buff, "AT+BONDMAC+", sizeof("AT+BONDMAC+") - 1)) {
 		if (mac_addr_str_to_hex(&buff[sizeof("AT+BONDMAC+") - 1], g_fmc_config_data.bond_mac, 6)) {
 			FMC_EraseSector(FLCTL, DEFAULT_CONFIG_DATA_ADD);
 			SYS_delay_10nop(1000);
@@ -220,58 +239,214 @@ void proj_uart_at_handle(uint8_t *data, uint16_t pack_size)
 		num_buff[12] = '\n';
 		TGT_SendMultiData("BONDMAC+", sizeof("BONDMAC+") - 1);
 		TGT_SendMultiData(num_buff, 13);
-	} else if (!strncmp((const char *)buff, "AT+SETMAC+", sizeof("AT+SETMAC+") - 1)) {
-		if (mac_addr_str_to_hex(&buff[sizeof("AT+SETMAC+") - 1], g_fmc_config_data.own_mac, 6)) {
+		} else if (!strncmp((const char *)buff, "AT:WAC-", sizeof("AT:WAC-") - 1)) {
+		if (mac_addr_str_to_hex(&buff[sizeof("AT:WAC-") - 1], g_fmc_config_data.own_mac, 6)) {
 			FMC_EraseSector(FLCTL, DEFAULT_CONFIG_DATA_ADD);
 			SYS_delay_10nop(1000);
 			FMC_WriteStream(FLCTL, DEFAULT_CONFIG_DATA_ADD, (unsigned char *)&g_fmc_config_data, sizeof(g_fmc_config_data));
 			SYS_delay_10nop(1000);
-			TGT_SendMultiData("OK+SETMAC\r\n", sizeof("OK+SETMAC\r\n") - 1);
 			/* Wait until THR is empty to avoid data lost */
 			reset_flag = true;
 		} else {
 			TGT_SendMultiData("MAC_ERROR\r\n", sizeof("MAC_ERROR\r\n") - 1);
 		}
-	} else if (!strncmp((const char *)buff, "AT+MAC?", sizeof("AT+MAC?") - 1)) {
+		} else if (!strncmp((const char *)buff, "AT:MAC?", sizeof("AT:MAC?") - 1)) {
 		hex_to_string(g_fmc_config_data.own_mac, 6, num_buff);
 		num_buff[12] = '\n';
-		TGT_SendMultiData("MAC+", sizeof("MAC+") - 1);
+		TGT_SendMultiData("AT:MAC-", sizeof("AT:MAC-") - 1);
 		TGT_SendMultiData(num_buff, 13);
-	} else if (!strncmp((const char *)buff, "AT+NAME?", sizeof("AT+NAME?") - 1)) {
+		} else if (!strncmp((const char *)buff, "AT:REN?", sizeof("AT:REN?") - 1)) {
+		TGT_SendMultiData("AT:REN-", sizeof("AT:REN-") - 1);
 		TGT_SendMultiData(g_fmc_config_data.device_name, g_fmc_config_data.name_length);
-	} else if (!strncmp((const char *)buff, "AT+SETNAME+", sizeof("AT+SETNAME+") - 1)) {
-		g_fmc_config_data.name_length = pack_size - (sizeof("AT+SETNAME+") - 1);
+	} else if (!strncmp((const char *)buff, "AT:REN-", sizeof("AT:REN-") - 1)) {
+		g_fmc_config_data.name_length = pack_size - (sizeof("AT:REN-") - 1);
 		if (g_fmc_config_data.name_length > 28) {
 			g_fmc_config_data.name_length = 28;
 		}
 		memset(g_fmc_config_data.device_name, 0, sizeof(g_fmc_config_data.device_name));
-		memcpy(g_fmc_config_data.device_name, &buff[(sizeof("AT+SETNAME+") - 1)], g_fmc_config_data.name_length);
+		memcpy(g_fmc_config_data.device_name, &buff[(sizeof("AT:REN-") - 1)], g_fmc_config_data.name_length);
 		FMC_EraseSector(FLCTL, DEFAULT_CONFIG_DATA_ADD);
 		SYS_delay_10nop(1000);
 		FMC_WriteStream(FLCTL, DEFAULT_CONFIG_DATA_ADD, (unsigned char *)&g_fmc_config_data, sizeof(g_fmc_config_data));
 		SYS_delay_10nop(1000);
-		TGT_SendMultiData("OK+SETNAME\n", sizeof("OK+SETNAME\n") - 1);
-		reset_flag = true;
-	} else if (!strncmp((const char *)buff, "AT+DEFAULT", sizeof("AT+DEFAULT") - 1)) {
+		TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+	//	reset_flag = true;
+		} else if (!strncmp((const char *)buff, "AT:RELD", sizeof("AT:RELD") - 1)) {
 		default_data_init();
 		FMC_EraseSector(FLCTL, DEFAULT_CONFIG_DATA_ADD);
 		SYS_delay_10nop(1000);
 		FMC_WriteStream(FLCTL, DEFAULT_CONFIG_DATA_ADD, (unsigned char *)&g_fmc_config_data, sizeof(g_fmc_config_data));
 		SYS_delay_10nop(1000);
-		TGT_SendMultiData("OK+DEFAULT\n", sizeof("AT+DEFAULT\n") - 1);
+			TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
 		reset_flag = true;
 	} else if ((!strncmp((const char *)buff, "AT", sizeof("AT") - 1))
 		   && (pack_size == 2)) { /* LAST ONE */
-		TGT_SendMultiData("AT+OK\n", sizeof("AT+OK\n") - 1);
-	} else if (!strncmp((const char *)buff, "AT+ADV START", sizeof("AT+ADV START") - 1)) {
+				 TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+		} else if(!strncmp((const char *)buff, "AT:TPL-", sizeof("AT:TPL-") - 1)){
+			length = pack_size - (sizeof("AT:TPL-") - 1);
+			string_to_num(&buff[sizeof("AT:TPL-")-1],&g_fmc_config_data.tx_power_level,length);
+			TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+		}else if(!strncmp((const char *)buff, "AT:TPL?", sizeof("AT:TPL?") - 1)){
+		  length = num_to_srting(g_fmc_config_data.tx_power_level,num_buff);
+			TGT_SendMultiData("AT:TPL-", sizeof("AT:TPL-") - 1);
+			TGT_SendMultiData(num_buff , length);
+	}else if (!strncmp((const char *)buff, "AT:ADVSTART", sizeof("AT:ADVSTART") - 1)) {
+		uint32_t flag;
+		flag = 1;
+		g_fmc_config_data.start = flag;
+		process_at_command();
 		// k_work_init(&adv_start, adv_start_work);
 		// k_work_submit(&adv_start);
-		TGT_SendMultiData("OK+ADV START\n", sizeof("OK+ADV START\n") - 1);
-	} else if (!strncmp((const char *)buff, "AT+ADV STOP", sizeof("AT+ADV STOP") - 1)) {
+		length = num_to_srting(g_fmc_config_data.start,num_buff);
+		num_buff[length] = '\n';
+		TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+		TGT_SendMultiData(num_buff, length + 1);
+	} else if (!strncmp((const char *)buff, "AT:ADVSTOP", sizeof("AT:ADVSTOP") - 1)) {
+		uint32_t flag;
+		flag = 0;
+		g_fmc_config_data.start = flag;
+		process_at_command();
 		// k_work_init(&adv_stop, adv_stop_work);
 		// k_work_submit(&adv_stop);
-		TGT_SendMultiData("OK+ADV STOP\n", sizeof("OK+ADV STOP\n") - 1);
-	} else if (!strncmp((const char *)buff, "AT+SCAN START", sizeof("AT+SCAN START") - 1)) {
+		length = num_to_srting(g_fmc_config_data.start,num_buff);
+		num_buff[length] = '\n';
+		TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+		TGT_SendMultiData(num_buff, length + 1);
+	}else if(!strncmp((const char *)buff, "AT:SAVE", sizeof("AT:SAVE") - 1)){
+		FMC_EraseSector(FLCTL, DEFAULT_CONFIG_DATA_ADD);
+		SYS_delay_10nop(1000);
+		FMC_WriteStream(FLCTL, DEFAULT_CONFIG_DATA_ADD, (unsigned char *)&g_fmc_config_data, sizeof(g_fmc_config_data));
+		SYS_delay_10nop(1000);
+		TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+		}else if(!strncmp((const char *)buff, "AT:ADV-", sizeof("AT:ADV-") - 1)){
+			g_fmc_config_data.data_length = pack_size - (sizeof("AT:ADV-") - 1);
+			if(g_fmc_config_data.data_length > 11){
+				TGT_SendMultiData("AT:WRONG\n", sizeof("AT:WRONG\n") - 1);
+			}else{
+				if(g_fmc_config_data.data_length % 2 == 0){
+					mac_addr_str_to_hex(&buff[sizeof("AT:ADV-")-1],g_fmc_config_data.user_data,g_fmc_config_data.data_length/2);
+				}else{
+					mac_addr_str_to_hex(&buff[sizeof("AT:ADV-")-1],g_fmc_config_data.user_data,g_fmc_config_data.data_length/2+1);
+				}
+				TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+				}
+		}else if(!strncmp((const char *)buff, "AT:ADV?", sizeof("AT:ADV?") - 1)){
+			hex_to_string(g_fmc_config_data.user_data,g_fmc_config_data.data_length,num_buff);
+		TGT_SendMultiData("AT:ADV-", sizeof("AT:ADV-") - 1);
+			TGT_SendMultiData(num_buff,g_fmc_config_data.data_length);
+		}else if(!strncmp((const char *)buff, "AT:HELP", sizeof("AT:HELP") - 1)){
+			TGT_SendMultiData("AT:OK\r\n", sizeof("AT:OK\r\n") - 1);
+			TGT_SendMultiData("AT:REN-					Set module name\r\n", sizeof("AT:REN-					Set module name\r\n") - 1);
+			TGT_SendMultiData("AT:REN?					Query module name\r\n", sizeof("AT:REN?					Query module name\r\n") - 1);
+			TGT_SendMultiData("AT:CIT-					Set connection parameters\r\n", sizeof("AT:CIT-					Set connection parameters\r\n") - 1);
+			TGT_SendMultiData("AT:CIT?					Query connection parameters\r\n", sizeof("AT:CIT?					Query connection parameters\r\n") - 1);
+			TGT_SendMultiData("AT:BPS-					Set baud rate\r\n", sizeof("AT:BPS-					Set baud rate\r\n") - 1);
+			TGT_SendMultiData("AT:BPS?					Query baud rate\r\n", sizeof("AT:BPS?					Query baud rate\r\n") - 1);
+			TGT_SendMultiData("AT:WAC-					Set Bluetooth address\r\n", sizeof("AT:WAC-					Set Bluetooth address\r\n") - 1);
+			TGT_SendMultiData("AT:MAC?					Query Bluetooth address\r\n", sizeof("AT:MAC?					Query Bluetooth address\r\n") - 1);
+			TGT_SendMultiData("AT:VER?					Query the software version\r\n", sizeof("AT:VER?					Query the software version\r\n") - 1);
+			TGT_SendMultiData("AT:TPL-					Set transmit power\r\n", sizeof("AT:TPL-					Set transmit power\r\n") - 1);
+			TGT_SendMultiData("AT:TPL?					Query transmit power\r\n", sizeof("AT:TPL?					Query transmit power\r\n") - 1);
+			TGT_SendMultiData("AT:ADP-					Set Broadcast parameter\r\n", sizeof("AT:ADP-					Set Broadcast parameter\r\n") - 1);
+			TGT_SendMultiData("AT:ADP?					Query Broadcast parameter\r\n", sizeof("AT:ADP?					Query Broadcast parameter\r\n") - 1);
+			TGT_SendMultiData("AT:ADV-					Set Customize broadcast data content\r\n", sizeof("AT:ADV-					Set Customize broadcast data content\r\n") - 1);
+			TGT_SendMultiData("AT:ADV?					Query Customize broadcast data content\r\n", sizeof("AT:ADV?					Query Customize broadcast data content\r\n") - 1);
+			TGT_SendMultiData("AT:ADVAL-					Set Automatic broadcast switch\r\n", sizeof("AT:ADVAL-					Set Automatic broadcast switch\r\n") - 1);
+			TGT_SendMultiData("AT:ADVAL?					Query Automatic broadcast switch\r\n", sizeof("AT:ADVAL?					Query Automatic broadcast switch\r\n") - 1);
+			TGT_SendMultiData("AT:ADVSTART					Start broadcast\r\n", sizeof("AT:ADVSTART					Start broadcast\r\n") - 1);
+			TGT_SendMultiData("AT:ADVSTOP					Stop broadcast\r\n", sizeof("AT:ADVSTOP					Stop broadcast\r\n") - 1);
+			TGT_SendMultiData("AT:CNN-D					disconnect\r\n", sizeof("AT:CNN-D					disconnect\r\n") - 1);
+			TGT_SendMultiData("AT:PID-					Set device verification code\r\n", sizeof("AT:TPL-					Set device verification code\r\n") - 1);
+			TGT_SendMultiData("AT:PID?					Query device verification code\r\n", sizeof("AT:TPL?					Query device verification code\r\n") - 1);
+			TGT_SendMultiData("AT:SAVE					Save parameter\r\n", sizeof("AT:SAVE					Save parameter\r\n") - 1);
+			TGT_SendMultiData("AT:RST					Reset module\r\n", sizeof("AT:RST					Reset module\r\n") - 1);
+			TGT_SendMultiData("AT:RELD					factory data reset\r\n", sizeof("AT:RELD					factory data reset\r\n") - 1);
+			}else if(!strncmp((const char *)buff, "AT:ADP?", sizeof("AT:ADP?") - 1)){
+				TGT_SendMultiData("AT:ADP-", sizeof("AT:ADP-") - 1);
+				length = num_to_srting(g_fmc_config_data.interval_min,num_buff);
+				if(length != 4){
+					if(length < 4){
+						for(int i = 0; i < 4-length ; i++){
+							TGT_SendMultiData("0",1);
+						}
+						TGT_SendMultiData(num_buff,length);
+					}
+				}
+				length = num_to_srting(g_fmc_config_data.interval_max,num_buff);
+				if(length != 4){
+					if(length < 4){
+						for(int i = 0; i < 4-length ; i++){
+							TGT_SendMultiData("0",1);
+						}
+						TGT_SendMultiData(num_buff,length);
+					}
+				}
+				length = num_to_srting(g_fmc_config_data.adv_type,num_buff);
+				TGT_SendMultiData(num_buff,length);
+				length = num_to_srting(g_fmc_config_data.adv_channel,num_buff);
+				TGT_SendMultiData(num_buff,length);
+		}else if(!strncmp((const char *)buff, "AT:ADP-", sizeof("AT:ADP-") - 1)){
+				uint32_t itvl_min;
+				uint32_t itvl_max;
+				uint32_t type;
+				uint32_t channel;
+				length = pack_size - sizeof("AT:ADP-")+1;
+				if(length != 10){
+					TGT_SendMultiData("AT:WRONG\n", sizeof("AT:WRONG\n") - 1);
+				}else{
+				string_to_num(&buff[sizeof("AT:CIT-")-1],&itvl_min,4);
+				string_to_num(&buff[sizeof("AT:CIT-")+3],&itvl_max,4);
+				string_to_num(&buff[sizeof("AT:CIT-")+7],&type,1);
+				string_to_num(&buff[sizeof("AT:CIT-")+8],&channel,1);
+				g_fmc_config_data.interval_min = itvl_min;
+				g_fmc_config_data.interval_max = itvl_max;
+				g_fmc_config_data.adv_type = type;
+				g_fmc_config_data.adv_channel = channel;
+				TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+				}
+		}else if(!strncmp((const char *)buff, "AT:CIT?", sizeof("AT:CIT?") - 1)){
+			TGT_SendMultiData("AT:CIT-", sizeof("AT:CIT-") - 1);
+			length = num_to_srting(g_fmc_config_data.conn_itvl_min,num_buff);
+			if(length<4){
+			for(int i = 0;i < (4-length);i++)TGT_SendMultiData("0", 1);
+			}
+			TGT_SendMultiData(num_buff, length);
+			TGT_SendMultiData("/", 1);
+			length = num_to_srting(g_fmc_config_data.conn_itvl_max,num_buff);
+			if(length<4){
+			for(int i = 0;i < (4-length);i++)TGT_SendMultiData("0", 1);
+			}
+			TGT_SendMultiData(num_buff, length);
+			TGT_SendMultiData("/", 1);
+			length = num_to_srting(g_fmc_config_data.slave_latency,num_buff);
+			TGT_SendMultiData(num_buff, length);
+			TGT_SendMultiData("/", 1);
+			length = num_to_srting(g_fmc_config_data.timeout/10,num_buff);
+			if(length<4){
+			for(int i = 0;i < (4-length);i++)TGT_SendMultiData("0", 1);
+			}
+			TGT_SendMultiData(num_buff, length);
+			
+			}else if(!strncmp((const char *)buff, "AT:CIT-", sizeof("AT:CIT-") - 1)){
+				uint32_t max;
+				uint32_t min;
+				uint32_t latency;
+				uint32_t tmo;
+				length = pack_size - sizeof("AT:CIT-")+1;
+				if(length != 13){
+					TGT_SendMultiData("AT:WRONG\n", sizeof("AT:WRONG\n") - 1);
+				}else{
+				string_to_num(&buff[sizeof("AT:CIT-")-1],&min,4);
+				string_to_num(&buff[sizeof("AT:CIT-")+3],&max,4);
+				string_to_num(&buff[sizeof("AT:CIT-")+7],&latency,1);
+				string_to_num(&buff[sizeof("AT:CIT-")+8],&tmo,4);
+				g_fmc_config_data.conn_itvl_max = max;
+				g_fmc_config_data.conn_itvl_min = min;
+				g_fmc_config_data.slave_latency = latency;
+				g_fmc_config_data.timeout = tmo*10;
+				TGT_SendMultiData("AT:OK\n", sizeof("AT:OK\n") - 1);
+				}
+	}else if (!strncmp((const char *)buff, "AT+SCAN START", sizeof("AT+SCAN START") - 1)) {
 		printf("AT+SCAN START\n");
 		at_sem_flag = AT_SCAN;
 		xSemaphoreGive(xSemaphore_app);
@@ -296,8 +471,18 @@ void proj_uart_at_handle(uint8_t *data, uint16_t pack_size)
 		string_to_num(&buff[sizeof("AT+CONN ") - 1], &conn_index, (pack_size - (sizeof("AT+CONN ") - 1)));
 		// uart_devs_show();
 		TGT_SendMultiData("OK+DEV SHOW\n", sizeof("OK+DEV SHOW\n") - 1);
-	} else {
-		TGT_SendMultiData("AT+ERROR\n", sizeof("AT+ERROR\n") - 1);
+		} else if(!strncmp((const char *)buff, "AT:UIDS-", sizeof("AT:UIDS-") - 1)){
+			mac_addr_str_to_hex(&buff[sizeof("AT:UIDS-")-1],g_fmc_config_data.service_uuid,16);
+			TGT_SendMultiData("AT:OK\r\n", sizeof("AT:OK\r\n") - 1);
+	}else if(!strncmp((const char *)buff, "AT:VER?", sizeof("AT:VER?") - 1)){
+	/*	TGT_SendMultiData("AT:VER-", sizeof("AT:VER-") - 1);
+		length = num_to_srting(,num_buff);
+		TGT_SendMultiData(num_buff,length);
+		TGT_SendMultiData("////",sizeof("////")-1);
+		length = num_to_srting(otp.m.ft_version,num_buff);
+		TGT_SendMultiData(num_buff,length);*/
+	}else {
+		TGT_SendMultiData("AT:ERP\n", sizeof("AT:ERP\n") - 1);
 	}
 
 	if (reset_flag) {
@@ -438,7 +623,7 @@ void UART1_IRQHandler(void)
 void default_data_init(void)
 {
 	memcpy(g_fmc_config_data.own_mac, default_mac_addr, 6);
-
+	memcpy(g_fmc_config_data.service_uuid,default_service_uuid,32);
 	g_fmc_config_data.baudrate = 115200;/* Baudrate */
 	memset(g_fmc_config_data.device_name, 0, sizeof(g_fmc_config_data.device_name));
 	memcpy(&g_fmc_config_data.device_name[0], CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME));
@@ -446,6 +631,16 @@ void default_data_init(void)
 	memcpy(g_fmc_config_data.bond_mac, default_bond_mac, 6);
 	g_fmc_config_data.passkey = 123456;
 	g_fmc_config_data.rst_flag = 0x55555555;
+	g_fmc_config_data.advalenable = 1;
+	g_fmc_config_data.interval_max = 800;
+	g_fmc_config_data.interval_min = 800;
+	g_fmc_config_data.adv_type = 0;
+	g_fmc_config_data.adv_channel = 7;
+	g_fmc_config_data.conn_itvl_min = 16;
+	g_fmc_config_data.conn_itvl_max = 32;
+	g_fmc_config_data.slave_latency = 0;
+	g_fmc_config_data.timeout = 2000;
+	g_fmc_config_data.tx_power_level = 1;
 }
 
 void load_config(void)

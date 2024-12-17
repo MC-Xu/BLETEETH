@@ -59,6 +59,20 @@ typedef struct {
 	uint8_t bond_mac[6];
 	uint32_t passkey;
 	uint32_t rst_flag;
+	uint32_t advalenable;
+	uint32_t start;
+	uint8_t service_uuid[16];
+	uint16_t interval_min;
+	uint16_t interval_max;
+	uint16_t adv_type;
+	uint16_t adv_channel;
+	uint16_t conn_itvl_min;
+	uint16_t conn_itvl_max;
+	uint16_t slave_latency;
+	uint16_t timeout;
+	uint32_t tx_power_level;
+	uint8_t user_data[11];
+	uint8_t data_length;
 } fmc_data;
 
 void default_data_init(void);
@@ -70,6 +84,7 @@ extern SemaphoreHandle_t xSemaphore_app;
 extern void blecent_scan(void);
 extern void peri_notify(uint8_t *data, uint8_t len);
 extern void central_write(uint8_t *data, uint8_t len);
+extern void process_at_command(void);
 
 #ifdef __cplusplus
 }
