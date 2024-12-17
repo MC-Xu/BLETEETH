@@ -1,0 +1,9 @@
+encrypt_info:
+  secure_enable: true
+  anti_injection_enable: true
+  encrypt_flash_offset: 0x1 # The 1st page of flash (or say absolute flash address 0x100)
+  encrypt_key: '4c68384139f574d836bcf34e9dfb01bf' # AES-128 key in hexadecimal string format
+  debug_protect_enable: false
+  debug_key: '' # SWD Debug Protect Key
+image_info:
+  expected_start_addr: 0x0 # For encrypt tool to validate input hex image file
