@@ -42,9 +42,19 @@ static uint16_t peri_conn_handle;
 static uint16_t central_conn_handle;
 static uint16_t central_charac_write_handle;
 void ble_store_config_init(void);
+static void blehr_advertise(void);
 
 static int blecent_gap_event(struct ble_gap_event *event, void *arg);
+void handle_advertise_start(struct ble_npl_event *ev);
+void handle_advertise_stop(struct ble_npl_event *ev);
+static struct ble_npl_eventq *g_event_queue;
 
+typedef enum{
+	AD_OFF,
+	AD_ON
+}AdvertiseState;
+
+AdvertiseState g_ad_state = AD_OFF;
 //config EXAMPLE_IO_TYPE
 //int
 //default 0 if BLE_SM_IO_CAP_DISP_ONLY
@@ -511,7 +521,6 @@ blecent_gap_event(struct ble_gap_event *event, void *arg)
 	}
 }
 
-
 static bool notify_state;
 
 static char *device_name = "n_muart";
@@ -526,6 +535,57 @@ static struct ble_npl_callout blehr_tx_timer;
 /* Variable to simulate heart beats */
 static uint8_t heartrate = 90;
 
+void handle_advertise_start(struct ble_npl_event *event_s)
+{
+	printf("adv_start_start\n");
+	AdvertiseState *state = (AdvertiseState *)event_s->arg;
+	if(*state == AD_OFF){
+		blehr_advertise();
+		printf("adv event is OK");
+		*state = AD_ON;
+	}
+}
+
+void handle_advertise_stop(struct ble_npl_event *ev)
+{
+	printf("adv_stop_start\n");
+	AdvertiseState *state = (AdvertiseState *)ev->arg;
+	if(*state == AD_ON){
+		ble_gap_adv_stop();
+		printf("event adv has stopped\n");
+		*state = AD_OFF;
+	}
+}
+/* receive AT command and put event into queue which has been created  */
+void process_at_command(void)
+{
+	if(g_fmc_config_data.start == 1){
+		if(g_ad_state == AD_OFF){
+			struct ble_npl_event *event;
+			ble_npl_event_init(event,handle_advertise_start,&g_ad_state);
+			ble_npl_eventq_put(g_event_queue,event);
+			printf("adv start is OK\n");
+		}
+	}else if(g_fmc_config_data.start == 0){
+		if(g_ad_state == AD_ON){
+			struct ble_npl_event *event;
+			ble_npl_event_init(event,handle_advertise_stop,&g_ad_state);
+			ble_npl_eventq_put(g_event_queue,event);
+			printf("adv has stopped\n");
+		}
+	}
+}
+/* create a new queue */
+void queue_init() {
+    g_event_queue->q = xQueueCreate(10, sizeof(struct ble_npl_event));
+		if (g_event_queue->q == NULL) {
+			
+        printf("Error creating event queue!\n");
+		}else{
+		printf("enentq has been inited\n");
+		}
+}
+
 /*
  * Enables advertising with parameters:
  *     o General discoverable mode
@@ -538,6 +598,7 @@ blehr_advertise(void)
 	struct ble_hs_adv_fields fields;
 	int rc;
 
+	g_ad_state = AD_ON;
 	printf("blehr_advertise\n");
 	/*
 	 *  Set the advertisement data included in our advertisements:
@@ -575,12 +636,37 @@ blehr_advertise(void)
 		return;
 	}
 
+	memset(&fields, 0, sizeof fields);
+	fields.tx_pwr_lvl = g_fmc_config_data.tx_power_level;
+	fields.tx_pwr_lvl_is_present = 1;
+	fields.mfg_data = g_fmc_config_data.user_data;
+	if(g_fmc_config_data.data_length % 2 == 0){
+		fields.mfg_data_len = g_fmc_config_data.data_length/2;
+	}else{
+		fields.mfg_data_len = g_fmc_config_data.data_length/2+1;
+	}
+	printf("mfg_data = ");
+	for(int i = 0;i<fields.mfg_data_len;i++){
+		printf("%x",g_fmc_config_data.user_data[i]);
+	}
+	printf("\n");
+	printf("data_len = %d\n",g_fmc_config_data.data_length);
+//	printf("power level = %d\n",fields.tx_pwr_lvl);
+	rc = ble_gap_adv_rsp_set_fields(&fields);
+    if (rc != 0) {
+        printf("error setting advertisement rsp data; rc=%d\n", rc);
+        return;
+    }
+	data_printf(g_fmc_config_data.service_uuid, 16);
 	/* Begin advertising */
 	memset(&adv_params, 0, sizeof(adv_params));
 	adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
 	adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
 
 	ble_att_set_preferred_mtu(247);
+	adv_params.itvl_min = g_fmc_config_data.interval_min;
+	adv_params.itvl_max = g_fmc_config_data.interval_max;
+	adv_params.channel_map = g_fmc_config_data.adv_channel;
 	rc = ble_gap_adv_start(blehr_addr_type, NULL, BLE_HS_FOREVER,
 			       &adv_params, bleph_gap_event, NULL);
 	if (rc != 0) {
@@ -686,7 +772,12 @@ static int
 bleph_gap_event(struct ble_gap_event *event, void *arg)
 {
     struct ble_sm_io pkey = {0};
-
+		struct ble_gap_upd_params *upd_params;
+		upd_params->itvl_min = g_fmc_config_data.conn_itvl_min;
+		upd_params->itvl_max = g_fmc_config_data.conn_itvl_max;
+		upd_params->latency = g_fmc_config_data.slave_latency;
+		upd_params->supervision_timeout = g_fmc_config_data.timeout;
+		
 	switch (event->type) {
 	case BLE_GAP_EVENT_CONNECT:
 		/* A new connection was established or a connection attempt failed */
@@ -700,6 +791,7 @@ bleph_gap_event(struct ble_gap_event *event, void *arg)
 			peri_conn_handle = 0;
 		} else {
 			peri_conn_handle = event->connect.conn_handle;
+			ble_gap_update_params(peri_conn_handle,upd_params);
 			printf("connect to phone peri_conn_handle %d\n", peri_conn_handle);
 		}
 		ble_gattc_exchange_mtu(event->connect.conn_handle, btshell_on_mtu, NULL);
@@ -766,13 +858,16 @@ static void
 blecent_on_sync(void)
 {
 	int rc;
+	queue_init();
 
 	/* Make sure we have proper identity address set (public preferred) */
 	rc = ble_hs_util_ensure_addr(0);
 	assert(rc == 0);
 
 	/* Begin advertising */
-	blehr_advertise();
+	if(g_fmc_config_data.advalenable == 1){
+		blehr_advertise();
+	}
 
 	ble_npl_time_delay(configTICK_RATE_HZ);
 }
